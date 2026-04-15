@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../categories/presentation/providers/category_provider.dart';
 import '../../domain/entities/product.dart';
 
-class EditProductDialog extends ConsumerStatefulWidget {
+class EditProductDialog extends StatefulWidget {
   const EditProductDialog({super.key, required this.product});
 
   final Product product;
 
   @override
-  ConsumerState<EditProductDialog> createState() => _EditProductDialogState();
+  State<EditProductDialog> createState() => _EditProductDialogState();
 }
 
-class _EditProductDialogState extends ConsumerState<EditProductDialog> {
+class _EditProductDialogState extends State<EditProductDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _priceController;
@@ -62,65 +62,69 @@ class _EditProductDialogState extends ConsumerState<EditProductDialog> {
                 },
               ),
               const SizedBox(height: 12),
-              ref
-                  .watch(categoryProvider)
-                  .when(
-                    loading: () => const Padding(
+              BlocBuilder<CategoryCubit, CategoryState>(
+                builder: (context, categoryState) {
+                  if (categoryState.isLoading) {
+                    return const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
                       child: CircularProgressIndicator(),
-                    ),
-                    error: (error, _) => Text(error.toString()),
-                    data: (categories) {
-                      if (categories.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Text('Chưa có danh mục nào.'),
-                        );
-                      }
+                    );
+                  }
+                  if (categoryState.error != null) {
+                    return Text(categoryState.error!);
+                  }
 
-                      final hasSelectedCategory = categories.any(
-                        (category) => category.id == _selectedCategoryId,
-                      );
-                      if (_selectedCategoryId == null || !hasSelectedCategory) {
-                        _selectedCategoryId = categories.first.id;
-                      }
+                  final categories = categoryState.categories;
+                  if (categories.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('Chưa có danh mục nào.'),
+                    );
+                  }
 
-                      return Align(
-                        alignment: Alignment.centerLeft,
-                        child: SizedBox(
-                          width: 220,
-                          child: DropdownButtonFormField<String>(
-                            isDense: true,
-                            initialValue: _selectedCategoryId,
-                            decoration: const InputDecoration(
-                              labelText: 'Danh mục',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: categories
-                                .map(
-                                  (category) => DropdownMenuItem(
-                                    value: category.id,
-                                    child: Text(
-                                      category.name,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (value) {
-                              setState(() => _selectedCategoryId = value);
-                            },
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Vui lòng chọn danh mục';
-                              }
-                              return null;
-                            },
-                          ),
+                  final hasSelectedCategory = categories.any(
+                    (category) => category.id == _selectedCategoryId,
+                  );
+                  if (_selectedCategoryId == null || !hasSelectedCategory) {
+                    _selectedCategoryId = categories.first.id;
+                  }
+
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: 220,
+                      child: DropdownButtonFormField<String>(
+                        isDense: true,
+                        initialValue: _selectedCategoryId,
+                        decoration: const InputDecoration(
+                          labelText: 'Danh mục',
+                          border: OutlineInputBorder(),
                         ),
-                      );
-                    },
-                  ),
+                        items: categories
+                            .map(
+                              (category) => DropdownMenuItem(
+                                value: category.id,
+                                child: Text(
+                                  category.name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() => _selectedCategoryId = value);
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Vui lòng chọn danh mục';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _priceController,

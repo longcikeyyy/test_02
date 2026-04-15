@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:convert';
 
 import '../../../../core/network/api_client.dart';
@@ -8,11 +8,19 @@ import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 
 class AuthState {
-  const AuthState({this.token, this.isLoading = false, this.error});
+  const AuthState({
+    this.token,
+    this.isLoading = false,
+    this.error,
+    this.profile,
+    this.isProfileLoading = false,
+  });
 
   final String? token;
   final bool isLoading;
   final String? error;
+  final AuthProfile? profile;
+  final bool isProfileLoading;
 
   bool get isAuthenticated => token != null && token!.isNotEmpty;
 
@@ -20,58 +28,30 @@ class AuthState {
     String? token,
     bool? isLoading,
     String? error,
+    AuthProfile? profile,
+    bool? isProfileLoading,
     bool clearError = false,
   }) {
     return AuthState(
       token: token ?? this.token,
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : (error ?? this.error),
+      profile: profile ?? this.profile,
+      isProfileLoading: isProfileLoading ?? this.isProfileLoading,
     );
   }
 }
 
-final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  final api = ApiClient(token: null);
-  return AuthRepositoryImpl(api);
-});
+class AuthCubit extends Cubit<AuthState> {
+  AuthCubit({AuthRepositoryFactory? repositoryFactory})
+    : _repositoryFactory =
+          repositoryFactory ??
+          ((token) => AuthRepositoryImpl(ApiClient(token: token))),
+      super(const AuthState());
 
-final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  final repository = ref.watch(authRepositoryProvider);
-  return AuthNotifier(repository);
-});
+  final AuthRepositoryFactory _repositoryFactory;
 
-final apiClientProvider = Provider<ApiClient>((ref) {
-  final token = ref.watch(authProvider.select((state) => state.token));
-  return ApiClient(token: token);
-});
-
-final authProfileProvider = FutureProvider.autoDispose<AuthProfile?>((
-  ref,
-) async {
-  final token = ref.watch(authProvider.select((state) => state.token));
-  if (token == null || token.isEmpty) {
-    return null;
-  }
-
-  final client = ApiClient(token: token);
-  try {
-    final raw = await client.post('/authentication/jwt/info');
-    final json = raw as Map<String, dynamic>;
-    final response = json.containsKey('isSuccess')
-        ? ApiResponse.fromJson(json)
-        : null;
-    final data = response?.data ?? json['data'] ?? json;
-    final profile = _extractProfile(data, token);
-    return profile;
-  } catch (_) {
-    return _profileFromToken(token);
-  }
-});
-
-class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier(this._repository) : super(const AuthState());
-
-  final AuthRepository _repository;
+  AuthRepository _repository({String? token}) => _repositoryFactory(token);
 
   Future<bool> register({
     required String name,
@@ -81,9 +61,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String confirmPassword,
     int gender = 0,
   }) async {
-    state = state.copyWith(isLoading: true, clearError: true);
+    emit(state.copyWith(isLoading: true, clearError: true));
     try {
-      await _repository.register(
+      await _repository(token: null).register(
         name: name,
         phoneNumber: phoneNumber,
         email: email,
@@ -91,10 +71,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
         confirmPassword: confirmPassword,
         gender: gender,
       );
-      state = state.copyWith(isLoading: false, clearError: true);
+      emit(state.copyWith(isLoading: false, clearError: true));
       return true;
     } catch (error) {
-      state = state.copyWith(isLoading: false, error: error.toString());
+      emit(state.copyWith(isLoading: false, error: error.toString()));
       return false;
     }
   }
@@ -103,34 +83,69 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String phoneNumber,
     required String password,
   }) async {
-    state = state.copyWith(isLoading: true, clearError: true);
+    emit(state.copyWith(isLoading: true, clearError: true));
     try {
-      final session = await _repository.login(
+      final session = await _repository(token: null).login(
         phoneNumber: phoneNumber,
         password: password,
       );
-      state = state.copyWith(
+      emit(state.copyWith(
         token: session.token,
         isLoading: false,
         clearError: true,
-      );
+      ));
+
+      await loadProfile();
     } catch (error) {
-      state = state.copyWith(isLoading: false, error: error.toString());
+      emit(state.copyWith(isLoading: false, error: error.toString()));
     }
   }
 
   Future<void> logout() async {
     try {
       if (state.isAuthenticated) {
-        await _repository.logout();
+        await _repository(token: state.token).logout();
       }
     } catch (_) {
       // Keep local logout behavior even if API logout fails.
     } finally {
-      state = const AuthState();
+      emit(const AuthState());
+    }
+  }
+
+  Future<void> loadProfile() async {
+    final token = state.token;
+    if (token == null || token.isEmpty) {
+      emit(state.copyWith(profile: null, isProfileLoading: false));
+      return;
+    }
+    if (state.isProfileLoading) {
+      return;
+    }
+
+    emit(state.copyWith(isProfileLoading: true));
+    final client = ApiClient(token: token);
+    try {
+      final raw = await client.post('/authentication/jwt/info');
+      final json = raw as Map<String, dynamic>;
+      final response = json.containsKey('isSuccess')
+          ? ApiResponse.fromJson(json)
+          : null;
+      final data = response?.data ?? json['data'] ?? json;
+      final profile = _extractProfile(data, token);
+      emit(state.copyWith(profile: profile, isProfileLoading: false));
+    } catch (_) {
+      emit(
+        state.copyWith(
+          profile: _profileFromToken(token),
+          isProfileLoading: false,
+        ),
+      );
     }
   }
 }
+
+typedef AuthRepositoryFactory = AuthRepository Function(String? token);
 
 AuthProfile _extractProfile(dynamic data, String token) {
   if (data is Map<String, dynamic>) {

@@ -1,39 +1,50 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../data/datasources/product_remote_datasource.dart';
-import '../../data/repositories/product_repository_impl.dart';
 import '../../domain/entities/product.dart';
 import '../../domain/repositories/product_repository.dart';
 
-final productRemoteDataSourceProvider = Provider<ProductRemoteDataSource>((
-  ref,
-) {
-  final apiClient = ref.watch(apiClientProvider);
-  return ProductRemoteDataSource(apiClient);
-});
+class ProductState {
+  const ProductState({
+    this.isLoading = true,
+    this.products = const [],
+    this.error,
+  });
 
-final productRepositoryProvider = Provider<ProductRepository>((ref) {
-  final remoteDataSource = ref.watch(productRemoteDataSourceProvider);
-  return ProductRepositoryImpl(remoteDataSource);
-});
+  final bool isLoading;
+  final List<Product> products;
+  final String? error;
 
-final productProvider =
-    StateNotifierProvider<ProductNotifier, AsyncValue<List<Product>>>((ref) {
-      final repository = ref.watch(productRepositoryProvider);
-      return ProductNotifier(repository)..loadProducts();
-    });
+  ProductState copyWith({
+    bool? isLoading,
+    List<Product>? products,
+    String? error,
+    bool clearError = false,
+  }) {
+    return ProductState(
+      isLoading: isLoading ?? this.isLoading,
+      products: products ?? this.products,
+      error: clearError ? null : (error ?? this.error),
+    );
+  }
+}
 
-class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
-  ProductNotifier(this._repository) : super(const AsyncValue.loading());
+class ProductCubit extends Cubit<ProductState> {
+  ProductCubit(this._repository) : super(const ProductState()) {
+    loadProducts();
+  }
 
   final ProductRepository _repository;
 
   Future<void> loadProducts({bool forceRefresh = false}) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(
-      () => _repository.getProducts(forceRefresh: forceRefresh),
-    );
+    emit(state.copyWith(isLoading: true, clearError: true));
+    try {
+      final products = await _repository.getProducts(
+        forceRefresh: forceRefresh,
+      );
+      emit(state.copyWith(isLoading: false, products: products));
+    } catch (error) {
+      emit(state.copyWith(isLoading: false, error: error.toString()));
+    }
   }
 
   Future<void> createProduct(Product product) async {

@@ -1,36 +1,47 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../data/datasources/report_remote_datasource.dart';
-import '../../data/repositories/report_repository_impl.dart';
 import '../../domain/entities/sold_product_stat.dart';
 import '../../domain/repositories/report_repository.dart';
 
-final reportRemoteDataSourceProvider = Provider<ReportRemoteDataSource>((ref) {
-  final apiClient = ref.watch(apiClientProvider);
-  return ReportRemoteDataSource(apiClient);
-});
+class ReportState {
+  const ReportState({
+    this.isLoading = true,
+    this.stats = const [],
+    this.error,
+  });
 
-final reportRepositoryProvider = Provider<ReportRepository>((ref) {
-  final remote = ref.watch(reportRemoteDataSourceProvider);
-  return ReportRepositoryImpl(remote);
-});
+  final bool isLoading;
+  final List<SoldProductStat> stats;
+  final String? error;
 
-final reportProvider =
-    StateNotifierProvider<ReportNotifier, AsyncValue<List<SoldProductStat>>>((
-      ref,
-    ) {
-      final repository = ref.watch(reportRepositoryProvider);
-      return ReportNotifier(repository)..loadStats();
-    });
+  ReportState copyWith({
+    bool? isLoading,
+    List<SoldProductStat>? stats,
+    String? error,
+    bool clearError = false,
+  }) {
+    return ReportState(
+      isLoading: isLoading ?? this.isLoading,
+      stats: stats ?? this.stats,
+      error: clearError ? null : (error ?? this.error),
+    );
+  }
+}
 
-class ReportNotifier extends StateNotifier<AsyncValue<List<SoldProductStat>>> {
-  ReportNotifier(this._repository) : super(const AsyncValue.loading());
+class ReportCubit extends Cubit<ReportState> {
+  ReportCubit(this._repository) : super(const ReportState()) {
+    loadStats();
+  }
 
   final ReportRepository _repository;
 
   Future<void> loadStats() async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(_repository.getSoldProductsStats);
+    emit(state.copyWith(isLoading: true, clearError: true));
+    try {
+      final stats = await _repository.getSoldProductsStats();
+      emit(state.copyWith(isLoading: false, stats: stats));
+    } catch (error) {
+      emit(state.copyWith(isLoading: false, error: error.toString()));
+    }
   }
 }

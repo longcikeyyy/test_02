@@ -1,36 +1,47 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../data/datasources/category_remote_datasource.dart';
-import '../../data/repositories/category_repository_impl.dart';
 import '../../domain/entities/category.dart';
 import '../../domain/repositories/category_repository.dart';
 
-final categoryRemoteDataSourceProvider = Provider<CategoryRemoteDataSource>((
-  ref,
-) {
-  final apiClient = ref.watch(apiClientProvider);
-  return CategoryRemoteDataSource(apiClient);
-});
+class CategoryState {
+  const CategoryState({
+    this.isLoading = true,
+    this.categories = const [],
+    this.error,
+  });
 
-final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {
-  final remoteDataSource = ref.watch(categoryRemoteDataSourceProvider);
-  return CategoryRepositoryImpl(remoteDataSource);
-});
+  final bool isLoading;
+  final List<Category> categories;
+  final String? error;
 
-final categoryProvider =
-    StateNotifierProvider<CategoryNotifier, AsyncValue<List<Category>>>((ref) {
-      final repository = ref.watch(categoryRepositoryProvider);
-      return CategoryNotifier(repository)..loadCategories();
-    });
+  CategoryState copyWith({
+    bool? isLoading,
+    List<Category>? categories,
+    String? error,
+    bool clearError = false,
+  }) {
+    return CategoryState(
+      isLoading: isLoading ?? this.isLoading,
+      categories: categories ?? this.categories,
+      error: clearError ? null : (error ?? this.error),
+    );
+  }
+}
 
-class CategoryNotifier extends StateNotifier<AsyncValue<List<Category>>> {
-  CategoryNotifier(this._repository) : super(const AsyncValue.loading());
+class CategoryCubit extends Cubit<CategoryState> {
+  CategoryCubit(this._repository) : super(const CategoryState()) {
+    loadCategories();
+  }
 
   final CategoryRepository _repository;
 
   Future<void> loadCategories() async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(_repository.getCategories);
+    emit(state.copyWith(isLoading: true, clearError: true));
+    try {
+      final categories = await _repository.getCategories();
+      emit(state.copyWith(isLoading: false, categories: categories));
+    } catch (error) {
+      emit(state.copyWith(isLoading: false, error: error.toString()));
+    }
   }
 }

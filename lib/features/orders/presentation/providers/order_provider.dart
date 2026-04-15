@@ -1,12 +1,6 @@
-import 'dart:async';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../products/domain/entities/product.dart';
-import '../../../products/presentation/providers/product_provider.dart';
-import '../../data/datasources/order_remote_datasource.dart';
-import '../../data/repositories/order_repository_impl.dart';
 import '../../domain/entities/customer.dart';
 import '../../domain/entities/order_item_draft.dart';
 import '../../domain/repositories/order_repository.dart';
@@ -48,45 +42,27 @@ class OrderState {
   }
 }
 
-final orderRemoteDataSourceProvider = Provider<OrderRemoteDataSource>((ref) {
-  final apiClient = ref.watch(apiClientProvider);
-  return OrderRemoteDataSource(apiClient);
-});
+class OrderCubit extends Cubit<OrderState> {
+  OrderCubit(this._repository) : super(const OrderState()) {
+    loadCustomers();
+  }
 
-final orderRepositoryProvider = Provider<OrderRepository>((ref) {
-  final remote = ref.watch(orderRemoteDataSourceProvider);
-  return OrderRepositoryImpl(remote);
-});
-
-final orderProvider = StateNotifierProvider<OrderNotifier, OrderState>((ref) {
-  final repository = ref.watch(orderRepositoryProvider);
-  return OrderNotifier(ref, repository)..loadCustomers();
-});
-
-class OrderNotifier extends StateNotifier<OrderState> {
-  OrderNotifier(this._ref, this._repository) : super(const OrderState());
-
-  final Ref _ref;
   final OrderRepository _repository;
-  final StreamController<double> _subtotalController =
-      StreamController<double>.broadcast();
-
-  Stream<double> get subtotalStream => _subtotalController.stream;
 
   Future<void> loadCustomers() async {
-    state = state.copyWith(isLoadingCustomers: true, clearError: true);
+    emit(state.copyWith(isLoadingCustomers: true, clearError: true));
     try {
       final customers = await _repository.getCustomers();
-      state = state.copyWith(
+      emit(state.copyWith(
         customers: customers,
         selectedCustomerId: customers.isNotEmpty ? customers.first.id : null,
         isLoadingCustomers: false,
-      );
+      ));
     } catch (error) {
-      state = state.copyWith(
+      emit(state.copyWith(
         isLoadingCustomers: false,
         error: error.toString(),
-      );
+      ));
     }
   }
 
@@ -94,8 +70,7 @@ class OrderNotifier extends StateNotifier<OrderState> {
     final current = state.quantityByProduct[product.id] ?? 0;
     final updated = Map<String, int>.from(state.quantityByProduct)
       ..[product.id] = current + 1;
-    state = state.copyWith(quantityByProduct: updated);
-    _emitSubtotal();
+    emit(state.copyWith(quantityByProduct: updated));
   }
 
   void decreaseQuantity(Product product) {
@@ -111,12 +86,11 @@ class OrderNotifier extends StateNotifier<OrderState> {
       updated[product.id] = current - 1;
     }
 
-    state = state.copyWith(quantityByProduct: updated);
-    _emitSubtotal();
+    emit(state.copyWith(quantityByProduct: updated));
   }
 
   void setCustomer(String? customerId) {
-    state = state.copyWith(selectedCustomerId: customerId);
+    emit(state.copyWith(selectedCustomerId: customerId));
   }
 
   List<OrderItemDraft> buildDraftItems(List<Product> products) {
@@ -141,27 +115,13 @@ class OrderNotifier extends StateNotifier<OrderState> {
       throw Exception('Vui long chon it nhat 1 san pham.');
     }
 
-    state = state.copyWith(isSubmitting: true, clearError: true);
+    emit(state.copyWith(isSubmitting: true, clearError: true));
     try {
       await _repository.createOrder(customerId: customerId, items: items);
-      state = state.copyWith(quantityByProduct: {}, isSubmitting: false);
-      _emitSubtotal();
+      emit(state.copyWith(quantityByProduct: {}, isSubmitting: false));
     } catch (error) {
-      state = state.copyWith(isSubmitting: false, error: error.toString());
+      emit(state.copyWith(isSubmitting: false, error: error.toString()));
       rethrow;
     }
-  }
-
-  void _emitSubtotal() {
-    final products = _ref.read(productProvider).valueOrNull ?? [];
-    final items = buildDraftItems(products);
-    final subtotal = items.fold<double>(0, (sum, item) => sum + item.total);
-    _subtotalController.add(subtotal);
-  }
-
-  @override
-  void dispose() {
-    _subtotalController.close();
-    super.dispose();
   }
 }

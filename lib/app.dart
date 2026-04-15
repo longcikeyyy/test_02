@@ -1,13 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'core/network/api_client.dart';
 import 'features/auth/presentation/pages/account_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
+import 'features/categories/data/datasources/category_remote_datasource.dart';
+import 'features/categories/data/repositories/category_repository_impl.dart';
+import 'features/categories/presentation/providers/category_provider.dart';
+import 'features/orders/data/datasources/order_remote_datasource.dart';
+import 'features/orders/data/repositories/order_repository_impl.dart';
 import 'features/orders/presentation/pages/order_page.dart';
+import 'features/orders/presentation/providers/order_provider.dart';
+import 'features/products/data/datasources/product_remote_datasource.dart';
+import 'features/products/data/repositories/product_repository_impl.dart';
 import 'features/products/presentation/pages/product_management_page.dart';
+import 'features/products/presentation/providers/product_provider.dart';
+import 'features/report/data/datasources/report_remote_datasource.dart';
+import 'features/report/data/repositories/report_repository_impl.dart';
 import 'features/report/presentation/pages/report_page.dart';
+import 'features/report/presentation/providers/report_provider.dart';
 
 class PosApp extends StatelessWidget {
   const PosApp({super.key});
@@ -142,16 +155,68 @@ class PosApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends ConsumerWidget {
+class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authProvider);
-    if (!authState.isAuthenticated) {
-      return const LoginPage();
-    }
-    return const HomeShell();
+  Widget build(BuildContext context) {
+    return BlocBuilder<AuthCubit, AuthState>(
+      builder: (context, authState) {
+        if (!authState.isAuthenticated) {
+          return const LoginPage();
+        }
+
+        return AuthenticatedScope(
+          token: authState.token!,
+          child: const HomeShell(),
+        );
+      },
+    );
+  }
+}
+
+class AuthenticatedScope extends StatelessWidget {
+  const AuthenticatedScope({
+    super.key,
+    required this.token,
+    required this.child,
+  });
+
+  final String token;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final apiClient = ApiClient(token: token);
+
+    final productRepository = ProductRepositoryImpl(
+      ProductRemoteDataSource(apiClient),
+    );
+    final categoryRepository = CategoryRepositoryImpl(
+      CategoryRemoteDataSource(apiClient),
+    );
+    final orderRepository = OrderRepositoryImpl(OrderRemoteDataSource(apiClient));
+    final reportRepository = ReportRepositoryImpl(
+      ReportRemoteDataSource(apiClient),
+    );
+
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<ProductCubit>(
+          create: (_) => ProductCubit(productRepository),
+        ),
+        BlocProvider<CategoryCubit>(
+          create: (_) => CategoryCubit(categoryRepository),
+        ),
+        BlocProvider<OrderCubit>(
+          create: (_) => OrderCubit(orderRepository),
+        ),
+        BlocProvider<ReportCubit>(
+          create: (_) => ReportCubit(reportRepository),
+        ),
+      ],
+      child: child,
+    );
   }
 }
 

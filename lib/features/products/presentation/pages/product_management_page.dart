@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/utils/currency_formatter.dart';
 import '../../domain/entities/product.dart';
@@ -7,82 +7,84 @@ import '../providers/product_provider.dart';
 import '../widgets/add_product_dialog.dart';
 import '../widgets/edit_product_dialog.dart';
 
-class ProductManagementPage extends ConsumerWidget {
+class ProductManagementPage extends StatelessWidget {
   const ProductManagementPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final productState = ref.watch(productProvider);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Center(child: const Text('Danh sách sản phẩm')),
-        actions: [
-          IconButton(
-            onPressed: () => ref
-                .read(productProvider.notifier)
-                .loadProducts(forceRefresh: true),
-            icon: const Icon(Icons.refresh),
+  Widget build(BuildContext context) {
+    return BlocBuilder<ProductCubit, ProductState>(
+      builder: (context, productState) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Center(child: const Text('Danh sách sản phẩm')),
+            actions: [
+              IconButton(
+                onPressed: () => context
+                    .read<ProductCubit>()
+                    .loadProducts(forceRefresh: true),
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showFormDialog(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Thêm'),
-      ),
-      body: productState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text(error.toString())),
-        data: (products) {
-          if (products.isEmpty) {
-            return const Center(child: Text('Chưa có sản phẩm nào.'));
-          }
-          return RefreshIndicator(
-            onRefresh: () => ref
-                .read(productProvider.notifier)
-                .loadProducts(forceRefresh: true),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemBuilder: (context, index) {
-                final product = products[index];
-                return ListTile(
-                  tileColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  title: Text(product.name),
-                  subtitle: Text(
-                    'Giá: ${formatCurrency(product.currentPrice)} | Tồn kho: ${product.stockQuantity}',
-                  ),
-                  trailing: Wrap(
-                    spacing: 8,
-                    children: [
-                      IconButton(
-                        onPressed: () =>
-                            _showFormDialog(context, ref, product: product),
-                        icon: const Icon(Icons.edit),
-                      ),
-                      IconButton(
-                        onPressed: () => _confirmDelete(context, ref, product),
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemCount: products.length,
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _showFormDialog(context),
+            icon: const Icon(Icons.add),
+            label: const Text('Thêm'),
+          ),
+          body: productState.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : productState.error != null
+                  ? Center(child: Text(productState.error!))
+                  : _buildList(context, productState.products),
+        );
+      },
+    );
+  }
+
+  Widget _buildList(BuildContext context, List<Product> products) {
+    if (products.isEmpty) {
+      return const Center(child: Text('Chưa có sản phẩm nào.'));
+    }
+
+    return RefreshIndicator(
+      onRefresh: () =>
+          context.read<ProductCubit>().loadProducts(forceRefresh: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemBuilder: (context, index) {
+          final product = products[index];
+          return ListTile(
+            tileColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            title: Text(product.name),
+            subtitle: Text(
+              'Giá: ${formatCurrency(product.currentPrice)} | Tồn kho: ${product.stockQuantity}',
+            ),
+            trailing: Wrap(
+              spacing: 8,
+              children: [
+                IconButton(
+                  onPressed: () => _showFormDialog(context, product: product),
+                  icon: const Icon(Icons.edit),
+                ),
+                IconButton(
+                  onPressed: () => _confirmDelete(context, product),
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                ),
+              ],
             ),
           );
         },
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemCount: products.length,
       ),
     );
   }
 
   Future<void> _showFormDialog(
-    BuildContext context,
-    WidgetRef ref, {
+    BuildContext context, {
     Product? product,
   }) async {
     final result = await showDialog<Product>(
@@ -101,9 +103,9 @@ class ProductManagementPage extends ConsumerWidget {
 
     try {
       if (product == null) {
-        await ref.read(productProvider.notifier).createProduct(result);
+        await context.read<ProductCubit>().createProduct(result);
       } else {
-        await ref.read(productProvider.notifier).updateProduct(result);
+        await context.read<ProductCubit>().updateProduct(result);
       }
       if (!context.mounted) {
         return;
@@ -126,7 +128,6 @@ class ProductManagementPage extends ConsumerWidget {
 
   Future<void> _confirmDelete(
     BuildContext context,
-    WidgetRef ref,
     Product product,
   ) async {
     final accepted = await showDialog<bool>(
@@ -152,7 +153,7 @@ class ProductManagementPage extends ConsumerWidget {
     }
 
     try {
-      await ref.read(productProvider.notifier).deleteProduct(product.id);
+      await context.read<ProductCubit>().deleteProduct(product.id);
       if (!context.mounted) {
         return;
       }
