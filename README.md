@@ -1,6 +1,5 @@
 # test_02
 
-Ứng dụng Flutter POS (bán hàng) demo.
 
 ## Cấu hình Base URL (API)
 
