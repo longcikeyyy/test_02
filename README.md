@@ -1,6 +1,10 @@
 # test_02
+## Tài khoản test nhanh
 
-Ứng dụng Flutter POS (bán hàng) demo.
+- Tài khoản (SĐT): `0901234567`
+- Mật khẩu: `123456`
+
+(Đây là tài khoản demo để test nhanh.)
 
 ## Cấu hình Base URL (API)
 
