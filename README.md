@@ -33,7 +33,6 @@ Các thư viện chính (trong `pubspec.yaml`):
 - `intl`: Format tiền tệ/chuỗi theo locale
 - `fl_chart`: Vẽ biểu đồ (thống kê)
 
-
 Thư viện mặc định Flutter:
 
 - `cupertino_icons`
@@ -41,3 +40,10 @@ Thư viện mặc định Flutter:
 Dev dependencies:
 
 - `flutter_lints`
+
+## Demo app
+
+| | | |
+|---|---|---|
+| ![](assets/images/a1.jpg) | ![](assets/images/a2.jpg) | ![](assets/images/a3.jpg) |
+| ![](assets/images/a4.jpg) | ![](assets/images/a5.jpg) |  |
